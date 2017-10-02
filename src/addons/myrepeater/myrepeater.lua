@@ -286,6 +286,7 @@ ashita.register_event('command', function(cmd, nType)
         end
         return true;
     end
+
     return false;
 end );
 
