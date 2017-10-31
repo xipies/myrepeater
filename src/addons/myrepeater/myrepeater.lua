@@ -13,7 +13,7 @@ local __invdivisor;
 
 local __cmds = { };
 
-function read_fps_divisor() -- borrowed from fps addon
+local function read_fps_divisor() -- borrowed from fps addon
     local fpscap = { 0x81, 0xEC, 0x00, 0x01, 0x00, 0x00, 0x3B, 0xC1, 0x74, 0x21, 0x8B, 0x0D };
     local fpsaddr = mem:FindPattern('FFXiMain.dll', fpscap, #fpscap, 'xxxxxxxxxxxx');
     if (fpsaddr == 0) then
