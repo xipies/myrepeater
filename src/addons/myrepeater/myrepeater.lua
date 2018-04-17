@@ -1,7 +1,7 @@
 
 _addon.author   = 'bluekirby0 / Eleven Pies';
 _addon.name     = 'MyRepeater';
-_addon.version  = '2.0.0';
+_addon.version  = '3.0.0';
 
 require 'common'
 
@@ -14,17 +14,18 @@ local __invdivisor;
 local __cmds = { };
 
 local function read_fps_divisor() -- borrowed from fps addon
-    local fpscap = { 0x81, 0xEC, 0x00, 0x01, 0x00, 0x00, 0x3B, 0xC1, 0x74, 0x21, 0x8B, 0x0D };
-    local fpsaddr = mem:FindPattern('FFXiMain.dll', fpscap, #fpscap, 'xxxxxxxxxxxx');
-    if (fpsaddr == 0) then
-        print('[FPS] Could not locate required signature!');
+    ----local fpscap = { 0x81, 0xEC, 0x00, 0x01, 0x00, 0x00, 0x3B, 0xC1, 0x74, 0x21, 0x8B, 0x0D };
+    ----local fpsaddr = mem:FindPattern('FFXiMain.dll', fpscap, #fpscap, 'xxxxxxxxxxxx');
+    local pointer = ashita.memory.findpattern('FFXiMain.dll', 0, '81EC000100003BC174218B0D', 0, 0);
+    if (pointer == 0) then
+        print('[FPS] Could not locate the required signature to patch the FPS divisor!');
         return true;
     end
 
     -- Read the address..
-    local addr = mem:ReadULong(fpsaddr + 0x0C);
-    addr = mem:ReadULong(addr);
-    return mem:ReadULong(addr + 0x30);
+    local addr = ashita.memory.read_uint32(pointer + 0x0C);
+    addr = ashita.memory.read_uint32(addr);
+    return ashita.memory.read_uint32(addr + 0x30);
 end;
 
 local function getcmd(key)
@@ -171,7 +172,7 @@ local function loadconf(filename)
         stopall();
     end
 
-    __cmds = confFromExternal(settings:load(_addon.path .. 'settings/' .. filename .. '.json'));
+    __cmds = confFromExternal(ashita.settings.load(_addon.path .. 'settings/' .. filename .. '.json'));
     setfpscycle();
     setgo();
     print ("Commands loaded: " .. filename .. '.json');
@@ -184,7 +185,7 @@ end
 
 local function saveconf(filename)
     setfpscycle();
-    settings:save(_addon.path .. 'settings/' .. filename .. '.json', confToExternal(__cmds));
+    ashita.settings.save(_addon.path .. 'settings/' .. filename .. '.json', confToExternal(__cmds));
     print ("Commands saved: " .. filename .. '.json');
 end
 
@@ -204,7 +205,7 @@ ashita.register_event('command', function(cmd, nType)
     local offset;
 
     -- Ensure we should handle this command..
-    local args = cmd:GetArgs();
+    local args = cmd:args();
     if (args[1] ~= '/repeat') then
         return false;
     elseif (#args < 2) then
