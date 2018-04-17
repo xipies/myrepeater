@@ -33,6 +33,8 @@ local function getcmd(key)
     if (cmditem == nil) then
         cmditem = { };
         cmditem.command = '';
+        cmditem.limit = 0;
+        cmditem.position = 0;
         cmditem.cycle = 5;
         cmditem.fpscycle = __invdivisor * cmditem.cycle;
         cmditem.offset = 0;
@@ -74,12 +76,28 @@ local function concatargs(args, seperator, startpos, endpos)
     return table.concat(t, seperator, startpos, endpos);
 end
 
+local function resumecmd(key)
+    local cmditem = getcmd(key);
+
+    if(#cmditem.command > 1) then
+        print("Starting cycle!")
+        setfpscycle();
+        -- Do not reset position for resuming
+        cmditem.timer = cmditem.fpsoffset;
+        cmditem.go = true;
+        setgo();
+    else
+        print("Set a command first!")
+    end
+end
+
 local function startcmd(key)
     local cmditem = getcmd(key);
 
     if(#cmditem.command > 1) then
         print("Starting cycle!")
         setfpscycle();
+        cmditem.position = 0;
         cmditem.timer = cmditem.fpsoffset;
         cmditem.go = true;
         setgo();
@@ -97,9 +115,21 @@ local function stopcmd(key)
     print("Cycle Terminated!")
 end
 
+local function resumeall()
+    setfpscycle();
+    for k, v in pairs(__cmds) do
+        -- Do not reset position for resuming
+        v.timer = v.fpsoffset;
+        v.go = true;
+    end
+    setgo();
+    print("Starting all!");
+end
+
 local function startall()
     setfpscycle();
     for k, v in pairs(__cmds) do
+        v.position = 0;
         v.timer = v.fpsoffset;
         v.go = true;
     end
@@ -116,6 +146,22 @@ local function stopall()
     print("Stopping all!");
 end
 
+local function toggleall()
+    if (__go) then
+        stopall();
+    else
+        startall();
+    end
+end
+
+local function pauseall()
+    if (__go) then
+        stopall();
+    else
+        resumeall();
+    end
+end
+
 ---------------------------------------------------------------------------------------------------
 -- func: confFromExternal
 -- desc: Converts from external settings to internal settings
@@ -128,6 +174,8 @@ local function confFromExternal(externalConf)
         -- Need to set values on required internal properties
         local item = { };
         item.command = v.command;
+        item.limit = v.limit;
+        item.position = 0;
         item.cycle = v.cycle
         item.fpscycle = __invdivisor * v.cycle;
         item.offset = v.offset;
@@ -157,6 +205,7 @@ local function confToExternal(internalConf)
         -- Only copying certain internal properties
         local item = { };
         item.command = v.command;
+        item.limit = v.limit;
         item.cycle = v.cycle;
         item.offset = v.offset;
         item.go = v.go;
@@ -203,6 +252,7 @@ ashita.register_event('command', function(cmd, nType)
     local cmditem;
     local cycle;
     local offset;
+    local limit;
 
     -- Ensure we should handle this command..
     local args = cmd:args();
@@ -226,6 +276,10 @@ ashita.register_event('command', function(cmd, nType)
         key = args[3];
         stopcmd(key);
         return true;
+    elseif (args[2] == 'resume' and (#args >= 3)) then
+        key = args[3];
+        resumecmd(key);
+        return true;
     elseif ((args[2] == 'cycle') and (#args == 4)) then
         key = args[3];
         cmditem = getcmd(key);
@@ -246,6 +300,16 @@ ashita.register_event('command', function(cmd, nType)
         cmditem.timer = 0;
         print("Initial offset set to " .. cmditem.offset .. " seconds!")
         return true;
+    elseif ((args[2] == 'limit') and (#args == 4)) then
+        key = args[3];
+        cmditem = getcmd(key);
+
+        limit = tonumber(args[4]);
+        if (limit < 0) then limit = 0 end
+        cmditem.limit = limit;
+        cmditem.position = 0;
+        print("Limit set to " .. cmditem.limit .. " times!")
+        return true;
     elseif (args[2] == 'remove' and (#args >= 3)) then
         key = args[3];
         __cmds[key] = nil;
@@ -260,6 +324,15 @@ ashita.register_event('command', function(cmd, nType)
         return true;
     elseif (args[2] == 'stopall') then
         stopall();
+        return true;
+    elseif (args[2] == 'resumeall') then
+        resumeall();
+        return true;
+    elseif (args[2] == 'toggleall') then
+        toggleall();
+        return true;
+    elseif (args[2] == 'pauseall') then
+        pauseall();
         return true;
     elseif (args[2] == 'load' and (#args >= 3)) then
         local filename = args[3];
@@ -278,6 +351,8 @@ ashita.register_event('command', function(cmd, nType)
             print('Render cycle: ' .. tostring(v.fpscycle));
             print('Offset: ' .. tostring(v.offset));
             print('Render offset: ' .. tostring(v.fpsoffset));
+            print('Limit: ' .. tostring(v.limit));
+            print('Position: ' .. tostring(v.position));
             print('Timer: ' .. tostring(v.timer));
             if (v.go) then
                 print('Go: true');
@@ -294,11 +369,22 @@ end );
 ashita.register_event('render', function()
     if(__go) then
         for k, v in pairs(__cmds) do
-            if(v.timer >= v.fpscycle) then
-                AshitaCore:GetChatManager():QueueCommand(v.command, 1);
-                v.timer = 0;
-            else
-                v.timer = v.timer + 1;
+            if (v.go) then
+                if(v.timer >= v.fpscycle) then
+                    AshitaCore:GetChatManager():QueueCommand(v.command, 1);
+                    v.timer = 0;
+
+                    if (v.limit > 0) then
+                        v.position = v.position + 1;
+                        if (v.position >= v.limit) then
+                            print('stopping ' .. v.command);
+                            v.go = false;
+                            setgo();
+                        end
+                    end
+                else
+                    v.timer = v.timer + 1;
+                end
             end
         end
     end
